@@ -10,10 +10,8 @@ repositories {
     mavenCentral()
 }
 
-ext {
-    lwjglVersion = '3.4.1'
-    lwjglNatives = 'natives-linux' // поменяйте на natives-windows или natives-macos при необходимости
-}
+def lwjglVersion = '3.4.1'
+def lwjglNatives = 'natives-linux'
 
 dependencies {
     implementation platform("org.lwjgl:lwjgl-bom:$lwjglVersion")
