@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Shader Viewer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; }
+body {
+    background: #555;
+    display: flex; justify-content: center; align-items: center;
+    overflow: hidden;
+    font-family: 'Verdana', 'Tahoma', sans-serif;
+    color: #fff;
+}
+canvas { display: block; }
+
+/* ── Panels ─────────────────────────────────────────────────────── */
+.panel {
+    background: #2a2a2a; border: 2px solid #888;
+    color: #fff; font-size: 12px;
+    padding: 6px; line-height: 1.5;
+}
+.panel .title {
+    background: #444; color: #fff;
+    padding: 3px 6px;
+    margin: -6px -6px 6px -6px;
+    border-bottom: 2px solid #888;
+    font-weight: bold; letter-spacing: 1px;
+    text-transform: uppercase; font-size: 11px;
+}
+/* Consistent 3px spacing between every sibling inside a panel,
+   0px right after the title (title already provides 6px via margin-bottom) */
+.panel > * + *        { margin-top: 3px; }
+.panel > .title + *   { margin-top: 0;   }
+
+/* ── Right stack ─────────────────────────────────────────────────── */
+#rightStack {
+    position: fixed; top: 6px; right: 6px; width: 230px;
+    z-index: 20;
+    max-height: calc(100vh - 128px); /* leave room for orbit ball */
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 3px;
+}
+
+/* ── Mode toggle (top-center, always visible) ─────────────────────── */
+#modeToggle {
+    position: fixed; top: 6px; left: 50%; transform: translateX(-50%);
+    z-index: 20; display: inline-flex;
+    border: 2px solid #888; background: #1a1a1a;
+}
+#modeToggle button { padding: 5px 14px; font-size: 11px; }
+
+/* ── Debug info box ──────────────────────────────────────────────── */
+#debugInfo {
+    background: #2a2a2a; border: 2px solid #888;
+    color: #fff; font-size: 11px; padding: 6px; line-height: 1.6;
+}
+#debugInfo .hotkeys { color: #ccc; margin-bottom: 3px; }
+#debugInfo .debugline { color: #5f5; font-size: 10px; line-height: 1.4; }
+#debugInfo .key {
+    display: inline-block; background: #1a1a1a; border: 1px solid #666;
+    padding: 1px 5px; font-size: 10px; color: #fff; margin: 0 2px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────── */
+button, label.fbtn {
+    cursor: pointer; background: #444; color: #fff;
+    border: 2px solid #888; border-radius: 0;
+    padding: 4px 8px; font-size: 11px;
+    font-family: 'Verdana', sans-serif;
+    margin: 0;
+    display: inline-block;
+    text-transform: uppercase; letter-spacing: 1px;
+}
+button:hover, label.fbtn:hover { background: #666; }
+button:active, label.fbtn:active { background: #333; border-color: #aaa; }
+.btnFull { display: block; width: 100%; text-align: center; }
+
+/* ── Inline toggle groups ────────────────────────────────────────── */
+.row { display: flex; align-items: center; gap: 3px; }
+.row label { font-size: 11px; color: #ccc; flex: 0 0 50px; }
+
+.toggle {
+    display: inline-flex; border: 2px solid #888; background: #1a1a1a; flex: 1;
+}
+.toggle button {
+    flex: 1; margin: 0; border: none;
+    background: #1a1a1a; color: #888;
+    padding: 4px 10px; font-size: 10px; letter-spacing: 1px; border-radius: 0;
+}
+.toggle button.active { background: #555; color: #fff; }
+.toggle button + button { border-left: 2px solid #888; }
+
+/* ── Check rows ──────────────────────────────────────────────────── */
+#debugChecks { display: flex; flex-direction: column; gap: 3px; }
+.checkRow {
+    display: flex; align-items: center; gap: 3px;
+    cursor: pointer; padding: 3px;
+    border: 2px solid transparent; background: #1a1a1a;
+}
+.checkRow:hover { border-color: #666; }
+.checkRow.active { background: #2a4a2a; border-color: #0c0; }
+.checkRow .box {
+    width: 12px; height: 12px; background: #1a1a1a; border: 2px solid #888;
+    display: inline-block; position: relative; flex: 0 0 12px;
+}
+.checkRow.active .box { background: #0c0; border-color: #0c0; }
+.checkRow.active .box::after {
+    content: ''; position: absolute; left: 1px; top: -2px;
+    width: 5px; height: 10px; border: solid #000;
+    border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.checkRow .lbl { font-size: 11px; color: #ccc; text-transform: uppercase; letter-spacing: 1px; }
+
+/* ── Slider rows ─────────────────────────────────────────────────── */
+.sliderRow { display: flex; align-items: center; gap: 3px; }
+.sliderRow label {
+    flex: 0 0 32px; font-size: 10px; color: #ccc;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.sliderRow input[type="range"] {
+    flex: 1; min-width: 60px; height: 12px;
+    -webkit-appearance: none; appearance: none;
+    background: #1a1a1a; border: 2px solid #888; outline: none; padding: 0; margin: 0;
+}
+.sliderRow input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 8px; height: 12px; background: #888; border: 1px solid #ccc; cursor: pointer;
+}
+.sliderRow input[type="range"]::-moz-range-thumb {
+    width: 8px; height: 12px; background: #888; border: 1px solid #ccc;
+    cursor: pointer; border-radius: 0;
+}
+.numInput {
+    flex: 0 0 44px; height: 18px;
+    background: #1a1a1a; color: #fff; border: 2px solid #888;
+    font-family: 'Verdana', sans-serif; font-size: 10px;
+    padding: 1px 4px; text-align: center; border-radius: 0; line-height: 14px;
+}
+.numInput:focus { border-color: #ccc; outline: none; }
+.numInput::-webkit-inner-spin-button,
+.numInput::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.numInput { -moz-appearance: textfield; }
+
+/* ── Shader slide-out panel (left) ──────────────────────────────── */
+#shaderPanel {
+    position: fixed; top: 0; left: 0; width: 280px; height: 100%;
+    background: #2a2a2a; border-right: 2px solid #888;
+    transform: translateX(-100%); transition: transform 0.25s ease-out;
+    z-index: 15; padding: 6px; overflow-y: auto;
+}
+#shaderPanel.open { transform: translateX(0); }
+#shaderPanel .title {
+    background: #444; color: #fff; padding: 3px 6px;
+    margin: -6px -6px 6px -6px; border-bottom: 2px solid #888;
+    font-weight: bold; letter-spacing: 1px; text-transform: uppercase; font-size: 12px;
+}
+#shaderList { display: flex; flex-direction: column; gap: 3px; }
+.shaderItem {
+    background: #333; border: 2px solid #666;
+    padding: 4px 6px;
+    display: flex; align-items: center; gap: 3px; font-size: 12px;
+}
+.shaderItem.active { border-color: #0c0; background: #2a4a2a; }
+.shaderItem .name { flex: 1; text-transform: uppercase; letter-spacing: 1px; font-size: 11px; }
+.shaderItem button { padding: 2px 6px; font-size: 10px; margin: 0; }
+
+/* ── Shader panel tab button ─────────────────────────────────────── */
+#toggleShaderPanel {
+    position: fixed; top: 50%; left: 0; transform: translateY(-50%);
+    width: 26px; height: 60px;
+    background: #444; border: 2px solid #888; border-left: none;
+    color: #fff; cursor: pointer; z-index: 14;
+    font-size: 16px; font-family: 'Verdana', sans-serif;
+    transition: left 0.25s ease-out;
+}
+#toggleShaderPanel.open { left: 280px; }
+#toggleShaderPanel:hover { background: #666; }
+
+/* ── Canvas containers ───────────────────────────────────────────── */
+.canvas-container {
+    position: fixed; top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    display: none; overflow: hidden; background: #555;
+}
+.canvas-container.active { display: block; }
+#glViewer, #glEditor { display: block; }
+
+/* ── Orbit ball — floating, bottom-right, no panel ──────────────── */
+#orbitBallWrap {
+    position: fixed; bottom: 6px; right: 6px;
+    z-index: 20;
+}
+#orbitBallCanvas {
+    display: block; cursor: grab;
+    user-select: none; -webkit-user-select: none;
+    touch-action: none;
+}
+
+/* ── Editor placeholder overlay ──────────────────────────────────── */
+.editorPlaceholder {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center; pointer-events: none; user-select: none;
+    display: flex; flex-direction: column; align-items: center; gap: 9px;
+}
+.editorBigLabel {
+    font-size: 52px; font-weight: bold; letter-spacing: 10px;
+    color: rgba(255,255,255,0.055);
+    font-family: 'Verdana', sans-serif; text-transform: uppercase;
+}
+.editorSmallLabel {
+    font-size: 10px; letter-spacing: 3px;
+    color: rgba(255,255,255,0.09);
+    font-family: 'Verdana', sans-serif; text-transform: uppercase;
+}
+</style>
+</head>
+<body>
+
+<!-- Shader slide-out (viewer only) -->
+<button id="toggleShaderPanel">▶</button>
+<div id="shaderPanel">
+    <div class="title">Shaders</div>
+    <div id="shaderList"></div>
+</div>
+
+<!-- Mode toggle — always visible, top-center -->
+<div class="toggle" id="modeToggle">
+    <button data-val="viewer" class="active">Viewer</button>
+    <button data-val="editor">Editor</button>
+</div>
+
+<!-- Right control stack — viewer only -->
+<div id="rightStack">
+    <div class="panel">
+        <div class="title">Load</div>
+        <label class="fbtn btnFull" for="objFile">📁 LOAD .OBJ</label>
+        <input type="file" id="objFile" accept=".obj" style="display:none">
+        <button id="resetBtn" class="btnFull">↺ RESET MESH</button>
+    </div>
+
+    <div class="panel">
+        <div class="title">Debug</div>
+        <div id="debugChecks">
+            <div class="checkRow" data-flag="normals"><span class="box"></span><span class="lbl">Normals</span></div>
+            <div class="checkRow" data-flag="uvs"><span class="box"></span><span class="lbl">UVs</span></div>
+            <div class="checkRow" data-flag="objpos"><span class="box"></span><span class="lbl">Obj-Pos</span></div>
+            <div class="checkRow" data-flag="lambert"><span class="box"></span><span class="lbl">N·L</span></div>
+            <div class="checkRow" data-flag="wire"><span class="box"></span><span class="lbl">Wireframe</span></div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="title">Lighting</div>
+        <div class="row">
+            <label>Mode:</label>
+            <div class="toggle" id="lightToggle">
+                <button data-val="0" class="active">Static</button>
+                <button data-val="1">Sun</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="title">Transform</div>
+        <div class="sliderRow">
+            <label>Roll</label>
+            <input type="range" id="rollSlider" min="-180" max="180" step="1" value="0">
+            <input type="number" id="rollNum" class="numInput" min="-180" max="180" step="1" value="0">
+        </div>
+        <div class="sliderRow">
+            <label>Spin</label>
+            <input type="range" id="spinSlider" min="0" max="200" step="1" value="70">
+            <input type="number" id="spinNum" class="numInput" min="0" max="200" step="1" value="70">
+        </div>
+        <button id="resetTransform" class="btnFull">↺ RESET</button>
+    </div>
+
+    <div id="debugInfo">
+        <div class="hotkeys">
+            <span class="key">F</span> Sun
+            <span class="key">R</span> Reset
+            <span class="key">P</span> Pause
+        </div>
+        <div class="debugline" id="topDebug">FPS: -- | Tris: -- | Verts: --</div>
+    </div>
+</div>
+
+<!-- Orbit ball — viewer only, free-floating bottom-right -->
+<div id="orbitBallWrap">
+    <canvas id="orbitBallCanvas" width="110" height="110"></canvas>
+</div>
+
+<!-- Canvas contexts -->
+<div id="viewerContainer" class="canvas-container active">
+    <canvas id="glViewer"></canvas>
+</div>
+<div id="editorContainer" class="canvas-container">
+    <canvas id="glEditor"></canvas>
+    <div class="editorPlaceholder">
+        <div class="editorBigLabel">Editor</div>
+        <div class="editorSmallLabel">Shader Editor — Work in Progress</div>
+    </div>
+</div>
+
+<script>
+'use strict';
+
+let currentMode = 'viewer';
+
+// ── WebGL contexts ─────────────────────────────────────────────────────────
+const canvasViewer = document.getElementById('glViewer');
+let glViewer = canvasViewer.getContext('webgl2', {antialias:false});
+if (!glViewer) glViewer = canvasViewer.getContext('webgl', {antialias:false});
+if (!glViewer) { alert('WebGL not supported'); throw new Error('No WebGL'); }
+glViewer.getExtension('OES_element_index_uint');
+
+const canvasEditor = document.getElementById('glEditor');
+let glEditor = canvasEditor.getContext('webgl2', {antialias:false});
+if (!glEditor) glEditor = canvasEditor.getContext('webgl', {antialias:false});
+if (!glEditor) { alert('WebGL not supported'); throw new Error('No WebGL'); }
+glEditor.getExtension('OES_element_index_uint');
+
+// ── Resize ─────────────────────────────────────────────────────────────────
+function resizeCanvas() {
+    const w = window.innerWidth, h = window.innerHeight;
+    canvasViewer.width = w; canvasViewer.height = h;
+    canvasEditor.width = w; canvasEditor.height = h;
+    canvasViewer.style.width = w+'px'; canvasViewer.style.height = h+'px';
+    canvasEditor.style.width = w+'px'; canvasEditor.style.height = h+'px';
+}
+resizeCanvas();
+
+// ── ICO-SPHERE ─────────────────────────────────────────────────────────────
+function createIcoSphere(radius, subdivisions) {
+    const t = (1.0 + Math.sqrt(5.0)) / 2.0;
+    let verts = [
+        [-1,t,0],[1,t,0],[-1,-t,0],[1,-t,0],
+        [0,-1,t],[0,1,t],[0,-1,-t],[0,1,-t],
+        [t,0,-1],[t,0,1],[-t,0,-1],[-t,0,1]
+    ].map(v=>{const l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);return[v[0]/l,v[1]/l,v[2]/l];});
+    let faces=[
+        [0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],
+        [1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],
+        [3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],
+        [4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]
+    ];
+    for (let s=0;s<subdivisions;s++){
+        const midCache={},newFaces=[];
+        function midpoint(a,b){
+            const key=a<b?a+'_'+b:b+'_'+a;
+            if(midCache[key]!==undefined)return midCache[key];
+            const va=verts[a],vb=verts[b];
+            const mx=(va[0]+vb[0])/2,my=(va[1]+vb[1])/2,mz=(va[2]+vb[2])/2;
+            const l=Math.sqrt(mx*mx+my*my+mz*mz);
+            verts.push([mx/l,my/l,mz/l]);
+            return midCache[key]=verts.length-1;
+        }
+        for(const f of faces){
+            const a=midpoint(f[0],f[1]),b=midpoint(f[1],f[2]),c=midpoint(f[2],f[0]);
+            newFaces.push([f[0],a,c],[f[1],b,a],[f[2],c,b],[a,b,c]);
+        }
+        faces=newFaces;
+    }
+    const outV=[],outN=[],outU=[],outI=[];
+    for(const v of verts){
+        outV.push(v[0]*radius,v[1]*radius,v[2]*radius);
+        outN.push(v[0],v[1],v[2]);
+        outU.push(0.5+Math.atan2(v[2],v[0])/(2*Math.PI),0.5-Math.asin(v[1])/Math.PI);
+    }
+    for(const f of faces)outI.push(f[0],f[1],f[2]);
+    return{vertices:new Float32Array(outV),normals:new Float32Array(outN),uvs:new Float32Array(outU),indices:new Uint32Array(outI),name:'ico-sphere'};
+}
+
+// ── OBJ Parser ─────────────────────────────────────────────────────────────
+function parseOBJ(text){
+    const positions=[],normals=[],uvs=[];
+    const outV=[],outN=[],outU=[],outI=[];
+    for(const line of text.split('\n')){
+        const t=line.trim();if(!t||t[0]==='#')continue;
+        const p=t.split(/\s+/),tag=p[0];
+        if(tag==='v')positions.push([+p[1],+p[2],+p[3]]);
+        else if(tag==='vn')normals.push([+p[1],+p[2],+p[3]]);
+        else if(tag==='vt')uvs.push([+p[1],+p[2]]);
+        else if(tag==='f'){
+            const face=[];
+            for(let i=1;i<p.length;i++){
+                const s=p[i].split('/');
+                face.push({vi:parseInt(s[0])-1,ti:s[1]&&s[1]!==''?parseInt(s[1])-1:-1,ni:s[2]&&s[2]!==''?parseInt(s[2])-1:-1});
+            }
+            for(let i=1;i<face.length-1;i++){
+                [face[0],face[i],face[i+1]].forEach(v=>{
+                    const pos=positions[v.vi]||[0,0,0];outV.push(...pos);
+                    const n=v.ni>=0?normals[v.ni]:null;outN.push(...(n||[0,0,0]));
+                    const uv=v.ti>=0?uvs[v.ti]:null;outU.push(...(uv||[0,0]));
+                });
+            }
+        }
+    }
+    if(!normals.length){
+        for(let i=0;i<outV.length;i+=9){
+            const[ax,ay,az,bx,by,bz,cx,cy,cz]=[outV[i],outV[i+1],outV[i+2],outV[i+3],outV[i+4],outV[i+5],outV[i+6],outV[i+7],outV[i+8]];
+            let nx=(by-ay)*(cz-az)-(bz-az)*(cy-ay),ny=(bz-az)*(cx-ax)-(bx-ax)*(cz-az),nz=(bx-ax)*(cy-ay)-(by-ay)*(cx-ax);
+            const len=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;nx/=len;ny/=len;nz/=len;
+            for(let k=0;k<3;k++){outN[i+k*3]=nx;outN[i+k*3+1]=ny;outN[i+k*3+2]=nz;}
+        }
+    }
+    if(!uvs.length){
+        for(let i=0;i<outV.length;i+=3){
+            const x=outV[i],y=outV[i+1],z=outV[i+2],l=Math.sqrt(x*x+y*y+z*z)||1;
+            outU[(i/3)*2]=0.5+Math.atan2(z/l,x/l)/(2*Math.PI);
+            outU[(i/3)*2+1]=0.5-Math.asin(y/l)/Math.PI;
+        }
+    }
+    let minX=Infinity,minY=Infinity,minZ=Infinity,maxX=-Infinity,maxY=-Infinity,maxZ=-Infinity;
+    for(let i=0;i<outV.length;i+=3){minX=Math.min(minX,outV[i]);maxX=Math.max(maxX,outV[i]);minY=Math.min(minY,outV[i+1]);maxY=Math.max(maxY,outV[i+1]);minZ=Math.min(minZ,outV[i+2]);maxZ=Math.max(maxZ,outV[i+2]);}
+    const cx2=(minX+maxX)/2,cy2=(minY+maxY)/2,cz2=(minZ+maxZ)/2;
+    const scale=1.4/(Math.max(maxX-minX,maxY-minY,maxZ-minZ)||1);
+    for(let i=0;i<outV.length;i+=3){outV[i]=(outV[i]-cx2)*scale;outV[i+1]=(outV[i+1]-cy2)*scale;outV[i+2]=(outV[i+2]-cz2)*scale;}
+    for(let i=0;i<outV.length/3;i++)outI.push(i);
+    return{vertices:new Float32Array(outV),normals:new Float32Array(outN),uvs:new Float32Array(outU),indices:new Uint32Array(outI),name:'custom'};
+}
+
+let currentMesh = createIcoSphere(0.85, 4);
+
+// ── Textures ───────────────────────────────────────────────────────────────
+function createNoiseTexture(gl,size){
+    const tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);
+    const data=new Uint8Array(size*size*4);
+    for(let i=0;i<size*size;i++){data[i*4]=Math.random()*256|0;data[i*4+1]=Math.random()*256|0;data[i*4+2]=Math.random()*256|0;data[i*4+3]=255;}
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,size,size,0,gl.RGBA,gl.UNSIGNED_BYTE,data);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    return tex;
+}
+function createSunTexture(gl,size){
+    const tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);
+    const data=new Uint8Array(size*size*4),c=size/2;
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+        const dx=(x-c)/c,dy=(y-c)/c,i=(y*size+x)*4;
+        const ax=Math.abs(dx),ay=Math.abs(dy);
+        const h=Math.max(0,0.18*(1-ax)-ay),v=Math.max(0,0.18*(1-ay)-ax);
+        const d=Math.sqrt(dx*dx+dy*dy),core=Math.max(0,1-d/0.25);
+        let a=Math.min(1,Math.pow(Math.max(Math.max(h,v)/0.18,core),0.8));
+        if(a<0.02){data[i]=data[i+1]=data[i+2]=data[i+3]=0;}
+        else{data[i]=data[i+1]=data[i+2]=255;data[i+3]=a*255|0;}
+    }
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,size,size,0,gl.RGBA,gl.UNSIGNED_BYTE,data);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    return tex;
+}
+const noiseTexV = createNoiseTexture(glViewer, 64);
+const sunTexV   = createSunTexture(glViewer, 128);
+
+// ── Shader sources ─────────────────────────────────────────────────────────
+const commonVS=`
+attribute vec3 aPos;attribute vec3 aNorm;attribute vec2 aUV;
+uniform mat4 uMVP;uniform mat4 uModel;uniform mat3 uNormalMat;
+varying vec3 vNorm;varying vec3 vWorldPos;varying vec3 vObjPos;varying vec2 vUV;
+void main(){
+    vNorm=normalize(uNormalMat*aNorm);
+    vWorldPos=(uModel*vec4(aPos,1.0)).xyz;
+    vObjPos=aPos;vUV=aUV;
+    gl_Position=uMVP*vec4(aPos,1.0);
+}`;
+const DBG=`
+if(uDbgNormals+uDbgUV+uDbgPos+uDbgLambert>0){
+    vec3 dbg=vec3(0.0);float cnt=0.0;
+    if(uDbgNormals==1){dbg+=N*0.5+0.5;cnt+=1.0;}
+    if(uDbgUV==1)     {dbg+=vec3(vUV,0.0);cnt+=1.0;}
+    if(uDbgPos==1)    {dbg+=fract(vObjPos*2.0);cnt+=1.0;}
+    if(uDbgLambert==1){dbg+=vec3(max(dot(N,L),0.0));cnt+=1.0;}
+    if(cnt>0.0){gl_FragColor=vec4(dbg/cnt,1.0);return;}
+}`;
+const NEU='vec3 base=vec3(0.5);';
+const AMB='vec3 ambient=vec3(0.1255);';
+
+const refractionFS=`precision mediump float;
+varying vec3 vNorm,vWorldPos,vObjPos;varying vec2 vUV;
+uniform float uTime;uniform vec3 uEye,uLightDir;
+uniform int uDbgNormals,uDbgUV,uDbgPos,uDbgLambert;
+uniform sampler2D uNoise;
+void main(){
+vec3 N=normalize(vNorm),V=normalize(uEye-vWorldPos),L=normalize(uLightDir);
+${DBG}
+float sc=0.175;vec2 ux=vObjPos.zy*sc,uy=vObjPos.xz*sc,uz=vObjPos.xy*sc;
+vec3 bl=abs(N);bl/=(bl.x+bl.y+bl.z);
+vec4 nx=texture2D(uNoise,ux),ny=texture2D(uNoise,uy),nz=texture2D(uNoise,uz);
+vec4 noise=nx*bl.x+ny*bl.y+nz*bl.z;
+vec2 d=(noise.rg-0.5)*0.4;
+vec4 nx2=texture2D(uNoise,ux+d),ny2=texture2D(uNoise,uy+d),nz2=texture2D(uNoise,uz+d);
+vec4 n2=nx2*bl.x+ny2*bl.y+nz2*bl.z;
+${NEU}${AMB}base*=0.4+1.1*n2.r;
+gl_FragColor=vec4(ambient+base*max(dot(N,L),0.0)*0.85,1.0);}`;
+
+const scatteringFS=`precision mediump float;
+varying vec3 vNorm,vWorldPos,vObjPos;varying vec2 vUV;
+uniform vec3 uEye,uLightDir;
+uniform int uDbgNormals,uDbgUV,uDbgPos,uDbgLambert;
+void main(){
+vec3 N=normalize(vNorm),V=normalize(uEye-vWorldPos),L=normalize(uLightDir);
+${DBG}${NEU}${AMB}
+float NL=max(dot(N,L),0.0),NV=max(dot(N,V),0.0);
+float rim=pow(1.0-NV,2.5),grazing=pow(1.0-NL,1.5);
+float sc=rim*(NL*0.5+grazing*0.8),bs=pow(max(dot(L,V),0.0),3.0)*NL*0.3;
+gl_FragColor=vec4(ambient+base*(NL*0.45+sc+bs),1.0);}`;
+
+const glitterFS=`precision mediump float;
+varying vec3 vNorm,vWorldPos,vObjPos;varying vec2 vUV;
+uniform vec3 uEye,uLightDir;
+uniform int uDbgNormals,uDbgUV,uDbgPos,uDbgLambert;
+vec3 pal(float t){t=fract(t);
+vec3 c[12];c[0]=vec3(0.05,0.05,0.40);c[1]=vec3(0.00,0.30,0.80);c[2]=vec3(0.00,0.65,0.90);
+c[3]=vec3(0.00,0.80,0.55);c[4]=vec3(0.10,0.70,0.10);c[5]=vec3(0.55,0.85,0.00);
+c[6]=vec3(0.95,0.80,0.00);c[7]=vec3(1.00,0.45,0.00);c[8]=vec3(0.90,0.10,0.10);
+c[9]=vec3(0.75,0.00,0.55);c[10]=vec3(0.45,0.00,0.75);c[11]=vec3(0.90,0.90,0.95);
+float s=t*11.0;int i=int(s);float f=fract(s);vec3 ca,cb;
+if(i==0){ca=c[0];cb=c[1];}else if(i==1){ca=c[1];cb=c[2];}else if(i==2){ca=c[2];cb=c[3];}
+else if(i==3){ca=c[3];cb=c[4];}else if(i==4){ca=c[4];cb=c[5];}else if(i==5){ca=c[5];cb=c[6];}
+else if(i==6){ca=c[6];cb=c[7];}else if(i==7){ca=c[7];cb=c[8];}else if(i==8){ca=c[8];cb=c[9];}
+else if(i==9){ca=c[9];cb=c[10];}else{ca=c[10];cb=c[11];}return mix(ca,cb,f);}
+float bayer4(vec2 fc){int x=int(mod(fc.x,4.0)),y=int(mod(fc.y,4.0));float r;
+if(y==0){if(x==0)r=0.;else if(x==1)r=8.;else if(x==2)r=2.;else r=10.;}
+else if(y==1){if(x==0)r=12.;else if(x==1)r=4.;else if(x==2)r=14.;else r=6.;}
+else if(y==2){if(x==0)r=3.;else if(x==1)r=11.;else if(x==2)r=1.;else r=9.;}
+else{if(x==0)r=15.;else if(x==1)r=7.;else if(x==2)r=13.;else r=5.;}return r/16.0;}
+void evalPlane(vec3 p,vec3 n,float sp,float po,inout float vis,inout float tb){
+float d=dot(p,n),frac=fract(d/sp),edge=min(frac,1.0-frac)*sp;
+if(edge<0.010){vis=1.0;tb=fract(d*0.38+po);}}
+void main(){
+vec3 N=normalize(vNorm),V=normalize(uEye-vWorldPos),L=normalize(uLightDir);
+${DBG}
+vec2 fc=gl_FragCoord.xy;float thr=bayer4(fc);float pv=0.0,pt=0.0;
+vec3 nX=vec3(1,0,0),nY=vec3(0,1,0),nZ=vec3(0,0,1);
+vec3 nXY=normalize(vec3(1,1,0)),nXZ=normalize(vec3(1,0,1)),nYZ=normalize(vec3(0,1,1));
+for(int k=0;k<8;k++){float sp=0.12+float(k)*0.02,kf=float(k)/8.0;
+evalPlane(vObjPos,nX,sp,kf*0.083+0.000,pv,pt);evalPlane(vObjPos,nY,sp,kf*0.083+0.170,pv,pt);
+evalPlane(vObjPos,nZ,sp,kf*0.083+0.340,pv,pt);evalPlane(vObjPos,nXY,sp,kf*0.083+0.500,pv,pt);
+evalPlane(vObjPos,nXZ,sp,kf*0.083+0.660,pv,pt);evalPlane(vObjPos,nYZ,sp,kf*0.083+0.830,pv,pt);}
+if(pv>0.5){gl_FragColor=vec4(mix(pal(pt),pal(pt+0.06),thr),1.0);return;}
+if(thr>=0.125)discard;
+float t=fract(dot(vObjPos,normalize(vec3(1.0,0.73,0.51)))*1.2);
+gl_FragColor=vec4(pal(t)*(max(dot(N,L),0.0)*0.5+0.5),1.0);}`;
+
+const specularFS=`precision mediump float;
+varying vec3 vNorm,vWorldPos,vObjPos;varying vec2 vUV;
+uniform vec3 uEye,uLightDir;uniform int uDbgNormals,uDbgUV,uDbgPos,uDbgLambert;
+void main(){vec3 N=normalize(vNorm),V=normalize(uEye-vWorldPos),L=normalize(uLightDir);
+${DBG}${NEU}${AMB}float diff=max(dot(N,L),0.0);vec3 H=normalize(L+V);
+float spec=pow(max(dot(N,H),0.0),64.0);
+gl_FragColor=vec4(ambient+base*diff*0.85+vec3(1.0)*spec*0.8,1.0);}`;
+
+const lambertFS=`precision mediump float;
+varying vec3 vNorm,vWorldPos,vObjPos;varying vec2 vUV;
+uniform vec3 uEye,uLightDir;uniform int uDbgNormals,uDbgUV,uDbgPos,uDbgLambert;
+void main(){vec3 N=normalize(vNorm),V=normalize(uEye-vWorldPos),L=normalize(uLightDir);
+${DBG}${NEU}${AMB}gl_FragColor=vec4(ambient+base*max(dot(N,L),0.0)*0.85,1.0);}`;
+
+const toonFS=`precision mediump float;
+varying vec3 vNorm,vWorldPos,vObjPos;varying vec2 vUV;
+uniform vec3 uEye,uLightDir;uniform int uDbgNormals,uDbgUV,uDbgPos,uDbgLambert;
+void main(){vec3 N=normalize(vNorm),V=normalize(uEye-vWorldPos),L=normalize(uLightDir);
+${DBG}${NEU}${AMB}float d=dot(N,L),band=d>0.6?1.0:d>0.2?0.7:d>-0.1?0.4:0.0;
+vec3 col=ambient+base*band*0.85;
+if(max(dot(N,V),0.0)<0.3)col*=0.5;gl_FragColor=vec4(col,1.0);}`;
+
+const phongFS=`precision mediump float;
+varying vec3 vNorm,vWorldPos,vObjPos;varying vec2 vUV;
+uniform vec3 uEye,uLightDir;uniform int uDbgNormals,uDbgUV,uDbgPos,uDbgLambert;
+void main(){vec3 N=normalize(vNorm),V=normalize(uEye-vWorldPos),L=normalize(uLightDir);
+${DBG}${NEU}${AMB}float diff=max(dot(N,L),0.0),spec=pow(max(dot(reflect(-L,N),V),0.0),24.0);
+gl_FragColor=vec4(ambient+base*diff*0.85+vec3(spec*0.7),1.0);}`;
+
+const gouraudFS=`precision mediump float;
+varying vec3 vNorm,vWorldPos,vObjPos;varying vec2 vUV;
+uniform vec3 uEye,uLightDir;uniform int uDbgNormals,uDbgUV,uDbgPos,uDbgLambert;
+void main(){vec3 N=normalize(vNorm),L=normalize(uLightDir);
+${DBG}${NEU}${AMB}float d=floor(max(dot(N,L),0.0)*5.0)/5.0;
+gl_FragColor=vec4(ambient+base*d*0.85,1.0);}`;
+
+const metallicFS=`precision mediump float;
+varying vec3 vNorm,vWorldPos,vObjPos;varying vec2 vUV;
+uniform vec3 uEye,uLightDir;uniform int uDbgNormals,uDbgUV,uDbgPos,uDbgLambert;
+void main(){vec3 N=normalize(vNorm),V=normalize(uEye-vWorldPos),L=normalize(uLightDir);
+${DBG}${NEU}${AMB}float diff=max(dot(N,L),0.0);vec3 R=reflect(-V,N);
+float env=R.y*0.5+0.5;vec3 ec=mix(vec3(0.22),vec3(0.78),env);
+float spec=pow(max(dot(R,L),0.0),64.0);
+gl_FragColor=vec4(ambient+base*diff*0.55+ec*0.85+spec*1.1,1.0);}`;
+
+const emissiveFS=`precision mediump float;
+varying vec3 vNorm,vWorldPos,vObjPos;varying vec2 vUV;
+uniform float uTime;uniform vec3 uEye,uLightDir;
+uniform int uDbgNormals,uDbgUV,uDbgPos,uDbgLambert;
+void main(){vec3 N=normalize(vNorm),V=normalize(uEye-vWorldPos),L=normalize(uLightDir);
+${DBG}${NEU}${AMB}float pulse=0.7+0.3*sin(uTime*2.0),rim=pow(1.0-max(dot(N,V),0.0),2.0);
+gl_FragColor=vec4(ambient+base*pulse+vec3(1.0)*rim*0.8,1.0);}`;
+
+const matcapFS=`precision mediump float;
+varying vec3 vNorm,vWorldPos,vObjPos;varying vec2 vUV;
+uniform vec3 uEye,uLightDir;uniform int uDbgNormals,uDbgUV,uDbgPos,uDbgLambert;
+void main(){vec3 N=normalize(vNorm),V=normalize(uEye-vWorldPos),L=normalize(uLightDir);
+${DBG}vec2 uv=N.xy*0.5+0.5;float mat=1.0-smoothstep(0.0,0.45,length(uv-vec2(0.65,0.75)));
+${NEU}${AMB}float diff=max(dot(N,L),0.0);vec2 uvL=uv+L.xy*0.12;
+float matL=1.0-smoothstep(0.0,0.45,length(uvL-vec2(0.65,0.75)));
+gl_FragColor=vec4(ambient+base*(0.35+diff*0.65)+vec3(mat*0.75+matL*0.35),1.0);}`;
+
+const fullbrightFS=`precision mediump float;
+varying vec3 vNorm,vWorldPos,vObjPos;varying vec2 vUV;
+uniform vec3 uEye,uLightDir;uniform int uDbgNormals,uDbgUV,uDbgPos,uDbgLambert;
+void main(){vec3 N=normalize(vNorm),V=normalize(uEye-vWorldPos),L=normalize(uLightDir);
+${DBG}gl_FragColor=vec4(vec3(0.5),1.0);}`;
+
+const spriteVS=`attribute vec2 aPos;attribute vec2 aUV;
+uniform mat4 uProj,uView;uniform vec3 uCenter;uniform float uSize;varying vec2 vUV;
+void main(){vec4 vp=uView*vec4(uCenter,1.0)+vec4(aPos*uSize,0.0,0.0);gl_Position=uProj*vp;vUV=aUV;}`;
+const spriteFS=`precision mediump float;varying vec2 vUV;uniform sampler2D uTex;
+void main(){vec4 c=texture2D(uTex,vUV);if(c.a<0.02)discard;gl_FragColor=c;}`;
+const wireVS=`attribute vec3 aPos;uniform mat4 uMVP;void main(){gl_Position=uMVP*vec4(aPos,1.0);}`;
+const wireFS=`precision mediump float;void main(){gl_FragColor=vec4(0.0,1.0,0.4,1.0);}`;
+
+// ── Math ───────────────────────────────────────────────────────────────────
+function mat4Persp(fov,asp,near,far){const f=1/Math.tan(fov/2),nf=1/(near-far);return new Float32Array([f/asp,0,0,0,0,f,0,0,0,0,(far+near)*nf,-1,0,0,2*far*near*nf,0]);}
+function mat4Id(){return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);}
+function mat4Mul(a,b){const r=new Float32Array(16);for(let i=0;i<4;i++)for(let j=0;j<4;j++){r[i*4+j]=0;for(let k=0;k<4;k++)r[i*4+j]+=a[k*4+j]*b[i*4+k];}return r;}
+function mat4RY(a){const c=Math.cos(a),s=Math.sin(a);return new Float32Array([c,0,s,0,0,1,0,0,-s,0,c,0,0,0,0,1]);}
+function mat4RX(a){const c=Math.cos(a),s=Math.sin(a);return new Float32Array([1,0,0,0,0,c,-s,0,0,s,c,0,0,0,0,1]);}
+function mat4RZ(a){const c=Math.cos(a),s=Math.sin(a);return new Float32Array([c,-s,0,0,s,c,0,0,0,0,1,0,0,0,0,1]);}
+function mat3Normal(m){
+    const a=m[0],b=m[1],c=m[2],d=m[4],e=m[5],f=m[6],g=m[8],h=m[9],k=m[10];
+    const det=a*(e*k-f*h)-b*(d*k-f*g)+c*(d*h-e*g);if(Math.abs(det)<1e-10)return new Float32Array([1,0,0,0,1,0,0,0,1]);
+    const id=1/det;
+    return new Float32Array([(e*k-f*h)*id,(g*f-d*k)*id,(d*h-e*g)*id,(h*c-b*k)*id,(a*k-g*c)*id,(g*b-a*h)*id,(b*f-e*c)*id,(d*c-a*f)*id,(a*e-d*b)*id]);
+}
+function mat4LookAt(eye,ctr,up){
+    const zx=eye[0]-ctr[0],zy=eye[1]-ctr[1],zz=eye[2]-ctr[2];
+    let l=1/Math.sqrt(zx*zx+zy*zy+zz*zz);
+    const fz=[zx*l,zy*l,zz*l];
+    let xx=up[1]*fz[2]-up[2]*fz[1],xy=up[2]*fz[0]-up[0]*fz[2],xz=up[0]*fz[1]-up[1]*fz[0];
+    l=1/Math.sqrt(xx*xx+xy*xy+xz*xz);const fx=[xx*l,xy*l,xz*l];
+    const fy=[fz[1]*fx[2]-fz[2]*fx[1],fz[2]*fx[0]-fz[0]*fx[2],fz[0]*fx[1]-fz[1]*fx[0]];
+    return new Float32Array([fx[0],fy[0],fz[0],0,fx[1],fy[1],fz[1],0,fx[2],fy[2],fz[2],0,
+        -(fx[0]*eye[0]+fx[1]*eye[1]+fx[2]*eye[2]),-(fy[0]*eye[0]+fy[1]*eye[1]+fy[2]*eye[2]),-(fz[0]*eye[0]+fz[1]*eye[1]+fz[2]*eye[2]),1]);
+}
+
+// ── Compile helpers ────────────────────────────────────────────────────────
+function mkShader(gl,type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){console.error(gl.getShaderInfoLog(s));gl.deleteShader(s);return null;}return s;}
+function mkProg(gl,vs,fs){const p=gl.createProgram();gl.attachShader(p,vs);gl.attachShader(p,fs);gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS)){console.error(gl.getProgramInfoLog(p));return null;}return p;}
+function buildProg(gl,vsrc,fsrc){
+    const vs=mkShader(gl,gl.VERTEX_SHADER,vsrc),fs=mkShader(gl,gl.FRAGMENT_SHADER,fsrc);
+    if(!vs||!fs)return null;const prog=mkProg(gl,vs,fs);if(!prog)return null;
+    return{program:prog,aPos:gl.getAttribLocation(prog,'aPos'),aNorm:gl.getAttribLocation(prog,'aNorm'),aUV:gl.getAttribLocation(prog,'aUV'),
+        uMVP:gl.getUniformLocation(prog,'uMVP'),uModel:gl.getUniformLocation(prog,'uModel'),uNormalMat:gl.getUniformLocation(prog,'uNormalMat'),
+        uTime:gl.getUniformLocation(prog,'uTime'),uEye:gl.getUniformLocation(prog,'uEye'),uLightDir:gl.getUniformLocation(prog,'uLightDir'),
+        uDbgNormals:gl.getUniformLocation(prog,'uDbgNormals'),uDbgUV:gl.getUniformLocation(prog,'uDbgUV'),
+        uDbgPos:gl.getUniformLocation(prog,'uDbgPos'),uDbgLambert:gl.getUniformLocation(prog,'uDbgLambert'),
+        uNoise:gl.getUniformLocation(prog,'uNoise')};}
+
+const SHADER_DEFS=[
+    {id:'refraction', name:'Refraction',        fs:refractionFS, useNoise:true},
+    {id:'scattering', name:'Surface Scattering', fs:scatteringFS},
+    {id:'glitter',    name:'Glitter',            fs:glitterFS},
+    {id:'specular',   name:'Specular',           fs:specularFS},
+    {id:'lambert',    name:'Lambert',            fs:lambertFS},
+    {id:'phong',      name:'Phong',              fs:phongFS},
+    {id:'toon',       name:'Toon',               fs:toonFS},
+    {id:'gouraud',    name:'Gouraud',            fs:gouraudFS},
+    {id:'metallic',   name:'Metallic',           fs:metallicFS},
+    {id:'emissive',   name:'Emissive',           fs:emissiveFS},
+    {id:'matcap',     name:'Matcap',             fs:matcapFS},
+    {id:'fullbright', name:'Fullbright',         fs:fullbrightFS}
+];
+const progs={};
+for(const d of SHADER_DEFS)progs[d.id]=buildProg(glViewer,commonVS,d.fs);
+
+const spriteProg=(()=>{const vs=mkShader(glViewer,glViewer.VERTEX_SHADER,spriteVS),fs=mkShader(glViewer,glViewer.FRAGMENT_SHADER,spriteFS);const p=mkProg(glViewer,vs,fs);return{program:p,aPos:glViewer.getAttribLocation(p,'aPos'),aUV:glViewer.getAttribLocation(p,'aUV'),uProj:glViewer.getUniformLocation(p,'uProj'),uView:glViewer.getUniformLocation(p,'uView'),uCenter:glViewer.getUniformLocation(p,'uCenter'),uSize:glViewer.getUniformLocation(p,'uSize'),uTex:glViewer.getUniformLocation(p,'uTex')};})();
+const wireProg=(()=>{const vs=mkShader(glViewer,glViewer.VERTEX_SHADER,wireVS),fs=mkShader(glViewer,glViewer.FRAGMENT_SHADER,wireFS);const p=mkProg(glViewer,vs,fs);return{program:p,aPos:glViewer.getAttribLocation(p,'aPos'),uMVP:glViewer.getUniformLocation(p,'uMVP')};})();
+
+// ── Buffers ────────────────────────────────────────────────────────────────
+const posBuf=glViewer.createBuffer(),normBuf=glViewer.createBuffer(),uvBuf=glViewer.createBuffer();
+const idxBuf=glViewer.createBuffer(),wireBuf=glViewer.createBuffer();
+let wireCount=0;
+
+function buildWireIdx(tri){const w=[];for(let i=0;i<tri.length;i+=3)w.push(tri[i],tri[i+1],tri[i+1],tri[i+2],tri[i+2],tri[i]);return new Uint32Array(w);}
+function uploadMesh(mesh){
+    glViewer.bindBuffer(glViewer.ARRAY_BUFFER,posBuf);  glViewer.bufferData(glViewer.ARRAY_BUFFER,mesh.vertices,glViewer.STATIC_DRAW);
+    glViewer.bindBuffer(glViewer.ARRAY_BUFFER,normBuf); glViewer.bufferData(glViewer.ARRAY_BUFFER,mesh.normals,glViewer.STATIC_DRAW);
+    glViewer.bindBuffer(glViewer.ARRAY_BUFFER,uvBuf);   glViewer.bufferData(glViewer.ARRAY_BUFFER,mesh.uvs,glViewer.STATIC_DRAW);
+    glViewer.bindBuffer(glViewer.ELEMENT_ARRAY_BUFFER,idxBuf);glViewer.bufferData(glViewer.ELEMENT_ARRAY_BUFFER,mesh.indices,glViewer.STATIC_DRAW);
+    const wi=buildWireIdx(mesh.indices);wireCount=wi.length;
+    glViewer.bindBuffer(glViewer.ELEMENT_ARRAY_BUFFER,wireBuf);glViewer.bufferData(glViewer.ELEMENT_ARRAY_BUFFER,wi,glViewer.STATIC_DRAW);
+}
+uploadMesh(currentMesh);
+
+const spriteQuad=new Float32Array([-1,-1,0,0,1,-1,1,0,1,1,1,1,-1,-1,0,0,1,1,1,1,-1,1,0,1]);
+const spriteBuf=glViewer.createBuffer();
+glViewer.bindBuffer(glViewer.ARRAY_BUFFER,spriteBuf);glViewer.bufferData(glViewer.ARRAY_BUFFER,spriteQuad,glViewer.STATIC_DRAW);
+
+// ── App state ──────────────────────────────────────────────────────────────
+const DBG_FLAG={normals:1,uvs:2,objpos:4,lambert:8};
+let activeShaders=['refraction','scattering','glitter','specular'];
+let sunMode=false,debugMask=0,wireOn=false;
+let userYaw=0,userPitch=0,userRoll=0,spinSpeed=70,paused=false;
+
+// ── localStorage: persist shader selection ─────────────────────────────────
+const LS_KEY='sv_activeShaders_v1';
+function saveShaderState(){try{localStorage.setItem(LS_KEY,JSON.stringify(activeShaders));}catch(e){}}
+function loadShaderState(){
+    try{
+        const raw=localStorage.getItem(LS_KEY);if(!raw)return;
+        const saved=JSON.parse(raw);
+        const valid=new Set(SHADER_DEFS.map(d=>d.id));
+        const filtered=saved.filter(id=>valid.has(id));
+        if(filtered.length>0)activeShaders=filtered;
+    }catch(e){}
+}
+
+// ── Overlay labels ─────────────────────────────────────────────────────────
+const overlay=document.createElement('div');
+overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;';
+document.body.appendChild(overlay);
+
+let labelDivs=[];
+function rebuildLabels(){
+    labelDivs.forEach(d=>d.remove());labelDivs=[];
+    for(const id of activeShaders){
+        const def=SHADER_DEFS.find(s=>s.id===id);
+        const d=document.createElement('div');
+        d.textContent=def?def.name:id;
+        d.style.cssText='position:fixed;color:#ddd;font-family:Verdana,sans-serif;text-align:center;text-shadow:2px 2px 0 #000;white-space:nowrap;letter-spacing:1px;text-transform:uppercase;font-weight:bold;pointer-events:none;';
+        overlay.appendChild(d);labelDivs.push(d);
+    }
+}
+function getGrid(n){
+    if(n<=1)return[1,1];if(n===2)return[2,1];if(n<=4)return[2,2];
+    if(n<=6)return[3,2];if(n<=9)return[3,3];if(n<=12)return[4,3];
+    const c=Math.ceil(Math.sqrt(n));return[c,Math.ceil(n/c)];
+}
+
+// ── Mode switching ─────────────────────────────────────────────────────────
+const shaderPanel=document.getElementById('shaderPanel');
+const togglePanel=document.getElementById('toggleShaderPanel');
+const rightStack =document.getElementById('rightStack');
+const orbitWrap  =document.getElementById('orbitBallWrap');
+
+function applyMode(mode){
+    currentMode=mode;
+    const isV=mode==='viewer';
+    document.getElementById('viewerContainer').classList.toggle('active',isV);
+    document.getElementById('editorContainer').classList.toggle('active',!isV);
+    rightStack.style.display =isV?'':'none';
+    orbitWrap.style.display  =isV?'':'none';
+    togglePanel.style.display=isV?'':'none';
+    if(!isV){
+        shaderPanel.classList.remove('open');
+        togglePanel.classList.remove('open');
+        togglePanel.textContent='▶';
+    }
+}
+
+// ── Shader panel ───────────────────────────────────────────────────────────
+togglePanel.addEventListener('click',()=>{
+    const open=shaderPanel.classList.toggle('open');
+    togglePanel.classList.toggle('open',open);
+    togglePanel.textContent=open?'◀':'▶';
+});
+
+function renderShaderList(){
+    const list=document.getElementById('shaderList');list.innerHTML='';
+    for(const def of SHADER_DEFS){
+        const isActive=activeShaders.includes(def.id);
+        const item=document.createElement('div');
+        item.className='shaderItem'+(isActive?' active':'');
+        item.innerHTML=`<span class="name">${def.name}</span>`;
+        const btn=document.createElement('button');
+        btn.textContent=isActive?'- REMOVE':'+ ADD';
+        btn.onclick=()=>{
+            if(isActive)activeShaders=activeShaders.filter(s=>s!==def.id);
+            else{activeShaders.push(def.id);const ord=SHADER_DEFS.map(d=>d.id);activeShaders.sort((a,b)=>ord.indexOf(a)-ord.indexOf(b));}
+            saveShaderState();
+            renderShaderList();rebuildLabels();updateDebug();
+        };
+        item.appendChild(btn);list.appendChild(item);
+    }
+}
+
+// ── Light toggle ───────────────────────────────────────────────────────────
+const lightToggle=document.getElementById('lightToggle');
+lightToggle.querySelectorAll('button').forEach(b=>{
+    b.classList.toggle('active',b.dataset.val===(sunMode?'1':'0'));
+    b.onclick=()=>{lightToggle.querySelectorAll('button').forEach(x=>x.classList.remove('active'));b.classList.add('active');sunMode=b.dataset.val==='1';updateDebug();};
+});
+
+// ── Debug checks ───────────────────────────────────────────────────────────
+document.querySelectorAll('#debugChecks .checkRow').forEach(row=>{
+    const flag=row.dataset.flag;
+    row.classList.toggle('active',flag==='wire'?wireOn:!!(debugMask&DBG_FLAG[flag]));
+    row.onclick=()=>{
+        row.classList.toggle('active');
+        if(flag==='wire')wireOn=row.classList.contains('active');
+        else{const bit=DBG_FLAG[flag];if(row.classList.contains('active'))debugMask|=bit;else debugMask&=~bit;}
+        updateDebug();
+    };
+});
+
+// ── Mode toggle buttons ────────────────────────────────────────────────────
+document.getElementById('modeToggle').querySelectorAll('button').forEach(btn=>{
+    btn.onclick=()=>{
+        document.getElementById('modeToggle').querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        applyMode(btn.dataset.val);
+    };
+});
+
+// ── Sliders ────────────────────────────────────────────────────────────────
+function bindSlider(sId,nId,init,cb){
+    const s=document.getElementById(sId),n=document.getElementById(nId);
+    s.value=n.value=init;
+    s.oninput=()=>{n.value=s.value;cb(+s.value);};
+    n.oninput=()=>{let v=+n.value;if(isNaN(v))v=0;s.value=v;cb(v);};
+    return v=>{s.value=n.value=v;cb(v);};
+}
+const setRoll=bindSlider('rollSlider','rollNum',0,v=>userRoll=v);
+const setSpin=bindSlider('spinSlider','spinNum',70,v=>spinSpeed=v);
+
+// ── Orbit ball — Canvas 2-D ────────────────────────────────────────────────
+const orbitEl=document.getElementById('orbitBallCanvas');
+const octx=orbitEl.getContext('2d');
+
+function drawOrbitBall(){
+    const c=octx,W=orbitEl.width,H=orbitEl.height,cx=W/2,cy=H/2,R=Math.min(W,H)/2-2;
+    c.clearRect(0,0,W,H);
+    c.save();
+    c.beginPath();c.arc(cx,cy,R,0,Math.PI*2);c.clip();
+    const g=c.createRadialGradient(cx-R*0.28,cy-R*0.28,1,cx,cy,R);
+    g.addColorStop(0,'#6a6a6a');g.addColorStop(0.55,'#2a2a2a');g.addColorStop(1,'#0a0a0a');
+    c.fillStyle=g;c.fillRect(0,0,W,H);
+    const yR=userYaw*Math.PI/180,pR=userPitch*Math.PI/180;
+    const cosY=Math.cos(yR),sinY=Math.sin(yR),cosP=Math.cos(pR),sinP=Math.sin(pR);
+    function rot(x,y,z){const x2=x*cosY+z*sinY,z2=-x*sinY+z*cosY;return[x2,y*cosP-z2*sinP,y*sinP+z2*cosP];}
+    const S=56;
+    function arcBoth(getP,colF,colB,lwF){
+        [true,false].forEach(back=>{
+            c.beginPath();c.strokeStyle=back?colB:colF;
+            c.lineWidth=back?lwF*0.45:lwF;c.setLineDash(back?[2,3]:[]);
+            let pen=false;
+            for(let i=0;i<=S;i++){
+                const[x,y,z]=getP(i/S),[rx,ry,rz]=rot(x,y,z);
+                const px=cx+rx*R,py=cy-ry*R,vis=back?(rz<0):(rz>=0);
+                if(vis){if(!pen)c.moveTo(px,py);else c.lineTo(px,py);pen=true;}
+                else{if(pen){c.stroke();c.beginPath();c.strokeStyle=back?colB:colF;c.lineWidth=back?lwF*0.45:lwF;c.setLineDash(back?[2,3]:[]);}pen=false;}
+            }
+            if(pen)c.stroke();
+        });
+        c.setLineDash([]);
+    }
+    for(let lat=-60;lat<=60;lat+=30){
+        const lR=lat*Math.PI/180,y0=Math.sin(lR),r0=Math.cos(lR),eq=(lat===0);
+        arcBoth(t=>[r0*Math.cos(t*Math.PI*2),y0,r0*Math.sin(t*Math.PI*2)],
+            eq?'rgba(255,255,255,0.52)':'rgba(255,255,255,0.20)',
+            eq?'rgba(255,255,255,0.14)':'rgba(255,255,255,0.07)',eq?1.0:0.5);
+    }
+    for(let lon=0;lon<360;lon+=30){
+        const lR=lon*Math.PI/180,pr=(lon===0||lon===180);
+        arcBoth(t=>{const a=(t-0.5)*Math.PI;return[Math.cos(a)*Math.cos(lR),Math.sin(a),Math.cos(a)*Math.sin(lR)];},
+            pr?'rgba(255,255,255,0.52)':'rgba(255,255,255,0.20)',
+            pr?'rgba(255,255,255,0.14)':'rgba(255,255,255,0.07)',pr?1.0:0.5);
+    }
+    const axes=[
+        {v:[1,0,0],col:'#e44',darkCol:'#622',lbl:'X',major:true},
+        {v:[-1,0,0],col:'#833',darkCol:'#411',lbl:'',major:false},
+        {v:[0,1,0],col:'#4e4',darkCol:'#262',lbl:'Y',major:true},
+        {v:[0,-1,0],col:'#373',darkCol:'#141',lbl:'',major:false},
+        {v:[0,0,1],col:'#55e',darkCol:'#226',lbl:'Z',major:true},
+        {v:[0,0,-1],col:'#337',darkCol:'#114',lbl:'',major:false},
+    ];
+    const rotAxes=axes.map(a=>{const[rx,ry,rz]=rot(...a.v);return{...a,rx,ry,rz};});
+    rotAxes.sort((a,b)=>a.rz-b.rz);
+    c.font='bold 7px Verdana,sans-serif';c.textAlign='center';c.textBaseline='middle';
+    for(const ax of rotAxes){
+        if(ax.rz<(ax.major?-0.5:0.05))continue;
+        const px=cx+ax.rx*R*0.82,py=cy-ax.ry*R*0.82;
+        c.globalAlpha=Math.min(1,Math.max(0.18,0.55+ax.rz*0.45));
+        const dotR=ax.major?7:3.5;
+        c.beginPath();c.arc(px,py,dotR,0,Math.PI*2);
+        c.fillStyle=ax.rz>=0?ax.col:ax.darkCol;c.fill();
+        if(ax.major&&ax.lbl){c.fillStyle='#fff';c.fillText(ax.lbl,px,py+0.5);}
+    }
+    c.globalAlpha=1;
+    c.restore();
+    c.beginPath();c.arc(cx,cy,R,0,Math.PI*2);
+    c.strokeStyle='#888';c.lineWidth=2;c.stroke();
+}
+
+// ── Orbit ball — Pointer Lock (mouse) ──────────────────────────────────────
+orbitEl.addEventListener('mousedown',e=>{
+    e.preventDefault();
+    orbitEl.requestPointerLock();
+});
+
+document.addEventListener('pointerlockchange',()=>{
+    // cursor is auto-hidden by browser while locked; auto-restored on unlock
+});
+
+document.addEventListener('pointerlockerror',()=>{
+    console.warn('Pointer lock denied');
+});
+
+document.addEventListener('mousemove',e=>{
+    if(document.pointerLockElement!==orbitEl)return;
+    userYaw  +=e.movementX*0.8;
+    userYaw   =((userYaw  +180)%360+360)%360-180;
+    userPitch+=e.movementY*0.8;
+    userPitch =((userPitch+180)%360+360)%360-180;
+    drawOrbitBall();
+});
+
+window.addEventListener('mouseup',()=>{
+    if(document.pointerLockElement===orbitEl)document.exitPointerLock();
+});
+
+// ── Orbit ball — Touch (fallback, no pointer lock on mobile) ───────────────
+let touchOrbit=false,orbitPX=0,orbitPY=0;
+orbitEl.addEventListener('touchstart',e=>{
+    touchOrbit=true;orbitPX=e.touches[0].clientX;orbitPY=e.touches[0].clientY;
+    e.preventDefault();
+},{passive:false});
+window.addEventListener('touchmove',e=>{
+    if(!touchOrbit)return;
+    const dx=e.touches[0].clientX-orbitPX,dy=e.touches[0].clientY-orbitPY;
+    orbitPX=e.touches[0].clientX;orbitPY=e.touches[0].clientY;
+    userYaw  =((userYaw  +dx+180)%360+360)%360-180;
+    userPitch=((userPitch+dy+180)%360+360)%360-180;
+    drawOrbitBall();
+},{passive:false});
+window.addEventListener('touchend',()=>{touchOrbit=false;});
+
+// ── Reset & file ───────────────────────────────────────────────────────────
+function resetTransformState(){
+    userYaw=0;userPitch=0;
+    setRoll(0);setSpin(70);
+    globalRot=0;
+    drawOrbitBall();
+}
+document.getElementById('resetTransform').onclick=resetTransformState;
+document.getElementById('resetBtn').onclick=()=>{currentMesh=createIcoSphere(0.85,4);uploadMesh(currentMesh);updateDebug();};
+document.getElementById('objFile').onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=ev=>{try{currentMesh=parseOBJ(ev.target.result);currentMesh.name=f.name;uploadMesh(currentMesh);updateDebug();}catch(err){alert('OBJ parse error: '+err.message);}};
+    r.readAsText(f);
+};
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────────────
+window.addEventListener('keydown',e=>{
+    if(e.target.tagName==='INPUT')return;
+    if(e.key==='f'||e.key==='F'){
+        sunMode=!sunMode;
+        lightToggle.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.val===(sunMode?'1':'0')));
+        updateDebug();
+    }
+    if(e.key==='r'||e.key==='R')resetTransformState();
+    if(e.key==='p'||e.key==='P'){paused=!paused;updateDebug();}
+});
+
+// ── Debug info ─────────────────────────────────────────────────────────────
+let fps=0,fCount=0,fTime=0,globalRot=0,sunAngle=0,lastT=0;
+const eye=[0,0,3.5];
+
+function updateDebug(){
+    const tris=currentMesh.indices.length/3,verts=currentMesh.vertices.length/3;
+    const dbgStr=[...(debugMask&1?['N']:[]),...(debugMask&2?['UV']:[]),...(debugMask&4?['POS']:[]),...(debugMask&8?['N·L']:[]),...(wireOn?['WIRE']:[])].join('+')||'OFF';
+    document.getElementById('topDebug').innerHTML=`FPS:${fps.toFixed(0)} | Tris:${tris} | Verts:${verts}<br>Shaders:${activeShaders.length} | Mesh:${currentMesh.name}<br>Debug:${dbgStr} | Sun:${sunMode?'ON':'OFF'} | Paused:${paused?'Y':'N'}`;
+}
+
+// ── Label positions ────────────────────────────────────────────────────────
+function positionLabels(cols,rows,cellW,cellH,offX,offY){
+    const rect=canvasViewer.getBoundingClientRect();
+    const fontSize=Math.max(11,Math.min(cellW,cellH)*0.06);
+    labelDivs.forEach((d,i)=>{
+        const col=i%cols,row=Math.floor(i/cols);
+        d.style.left=(rect.left+offX+(col+0.5)*cellW)+'px';
+        d.style.top =(rect.top +offY+(row+1)*cellH-8)+'px';
+        d.style.fontSize=fontSize+'px';
+        d.style.transform='translate(-50%,-100%)';
+    });
+}
+
+// ── Viewer render ──────────────────────────────────────────────────────────
+glViewer.enable(glViewer.DEPTH_TEST);glViewer.disable(glViewer.CULL_FACE);
+glEditor.enable(glEditor.DEPTH_TEST);glEditor.disable(glEditor.CULL_FACE);
+const DEG=Math.PI/180;
+
+function renderViewer(time,view,lightN){
+    const n=activeShaders.length;if(n===0)return;
+    const[cols,rows]=getGrid(n);
+    const cw=canvasViewer.width,ch=canvasViewer.height;
+    const cellSize=Math.floor(Math.min(cw/cols,ch/rows));
+    const cellW=cellSize,cellH=cellSize;
+    const offX=Math.floor((cw-cellW*cols)/2);
+    const offY=Math.floor((ch-cellH*rows)/2);
+
+    let model=mat4Id();
+    model=mat4Mul(model,mat4RY(userYaw*DEG));
+    model=mat4Mul(model,mat4RX(userPitch*DEG));
+    model=mat4Mul(model,mat4RZ(userRoll*DEG));
+    model=mat4Mul(model,mat4RY(globalRot));
+    const nMat=mat3Normal(model);
+    const proj=mat4Persp(Math.PI/4,1.0,0.1,100.0);
+    const mvp=mat4Mul(mat4Mul(proj,view),model);
+    const idxType=currentMesh.indices instanceof Uint32Array?glViewer.UNSIGNED_INT:glViewer.UNSIGNED_SHORT;
+
+    for(let i=0;i<n;i++){
+        const col=i%cols,row=Math.floor(i/cols);
+        const vx=offX+col*cellW,vy=offY+(rows-1-row)*cellH;
+        glViewer.viewport(vx,vy,cellW,cellH);
+        glViewer.scissor(vx,vy,cellW,cellH);
+        glViewer.enable(glViewer.SCISSOR_TEST);
+        glViewer.clearColor(0.333,0.333,0.333,1);
+        glViewer.clear(glViewer.COLOR_BUFFER_BIT|glViewer.DEPTH_BUFFER_BIT);
+        const id=activeShaders[i],def=SHADER_DEFS.find(s=>s.id===id),p=progs[id];
+        if(p){
+            glViewer.useProgram(p.program);
+            if(p.uMVP)      glViewer.uniformMatrix4fv(p.uMVP,false,mvp);
+            if(p.uModel)    glViewer.uniformMatrix4fv(p.uModel,false,model);
+            if(p.uNormalMat)glViewer.uniformMatrix3fv(p.uNormalMat,false,nMat);
+            if(p.uTime)     glViewer.uniform1f(p.uTime,time);
+            if(p.uEye)      glViewer.uniform3fv(p.uEye,eye);
+            if(p.uLightDir) glViewer.uniform3fv(p.uLightDir,lightN);
+            if(p.uDbgNormals!==null)glViewer.uniform1i(p.uDbgNormals,(debugMask&1)?1:0);
+            if(p.uDbgUV!==null)     glViewer.uniform1i(p.uDbgUV,(debugMask&2)?1:0);
+            if(p.uDbgPos!==null)    glViewer.uniform1i(p.uDbgPos,(debugMask&4)?1:0);
+            if(p.uDbgLambert!==null)glViewer.uniform1i(p.uDbgLambert,(debugMask&8)?1:0);
+            if(def?.useNoise&&p.uNoise){
+                glViewer.activeTexture(glViewer.TEXTURE0);glViewer.bindTexture(glViewer.TEXTURE_2D,noiseTexV);glViewer.uniform1i(p.uNoise,0);
+            }
+            const bind3=(loc,buf)=>{if(loc<0)return;glViewer.bindBuffer(glViewer.ARRAY_BUFFER,buf);glViewer.enableVertexAttribArray(loc);glViewer.vertexAttribPointer(loc,3,glViewer.FLOAT,false,0,0);};
+            bind3(p.aPos,posBuf);bind3(p.aNorm,normBuf);
+            if(p.aUV>=0){glViewer.bindBuffer(glViewer.ARRAY_BUFFER,uvBuf);glViewer.enableVertexAttribArray(p.aUV);glViewer.vertexAttribPointer(p.aUV,2,glViewer.FLOAT,false,0,0);}
+            glViewer.bindBuffer(glViewer.ELEMENT_ARRAY_BUFFER,idxBuf);
+            glViewer.drawElements(glViewer.TRIANGLES,currentMesh.indices.length,idxType,0);
+        }
+        if(wireOn){
+            glViewer.useProgram(wireProg.program);
+            glViewer.uniformMatrix4fv(wireProg.uMVP,false,mvp);
+            glViewer.bindBuffer(glViewer.ARRAY_BUFFER,posBuf);
+            glViewer.enableVertexAttribArray(wireProg.aPos);
+            glViewer.vertexAttribPointer(wireProg.aPos,3,glViewer.FLOAT,false,0,0);
+            glViewer.bindBuffer(glViewer.ELEMENT_ARRAY_BUFFER,wireBuf);
+            glViewer.drawElements(glViewer.LINES,wireCount,glViewer.UNSIGNED_INT,0);
+        }
+        if(sunMode){
+            const ld=[Math.cos(sunAngle)*2.2*0.8,(1.2+Math.sin(sunAngle*0.5)*0.6)*0.8,Math.sin(sunAngle)*2.2*0.8];
+            glViewer.useProgram(spriteProg.program);
+            glViewer.enable(glViewer.BLEND);glViewer.blendFunc(glViewer.SRC_ALPHA,glViewer.ONE_MINUS_SRC_ALPHA);glViewer.depthMask(false);
+            glViewer.uniformMatrix4fv(spriteProg.uProj,false,proj);glViewer.uniformMatrix4fv(spriteProg.uView,false,view);
+            glViewer.uniform3fv(spriteProg.uCenter,ld);glViewer.uniform1f(spriteProg.uSize,0.25);
+            glViewer.activeTexture(glViewer.TEXTURE0);glViewer.bindTexture(glViewer.TEXTURE_2D,sunTexV);glViewer.uniform1i(spriteProg.uTex,0);
+            glViewer.bindBuffer(glViewer.ARRAY_BUFFER,spriteBuf);
+            glViewer.enableVertexAttribArray(spriteProg.aPos);glViewer.vertexAttribPointer(spriteProg.aPos,2,glViewer.FLOAT,false,16,0);
+            glViewer.enableVertexAttribArray(spriteProg.aUV);glViewer.vertexAttribPointer(spriteProg.aUV,2,glViewer.FLOAT,false,16,8);
+            glViewer.drawArrays(glViewer.TRIANGLES,0,6);
+            glViewer.depthMask(true);glViewer.disable(glViewer.BLEND);
+        }
+        glViewer.disable(glViewer.SCISSOR_TEST);
+    }
+    positionLabels(cols,rows,cellW,cellH,offX,offY);
+}
+
+// ── Main loop ──────────────────────────────────────────────────────────────
+function loop(ts){
+    const time=(ts||0)*0.001;
+    let dt=lastT?time-lastT:0;lastT=time;
+    if(dt>0.1)dt=0.1;if(dt<0)dt=0;
+    fCount++;fTime+=dt;
+    if(fTime>=0.5){fps=fCount/fTime;fCount=0;fTime=0;updateDebug();}
+
+    if(!paused){
+        if(!sunMode)globalRot+=dt*spinSpeed*DEG;
+        else sunAngle+=dt*0.9;
+    }
+
+    if(currentMode==='viewer'){
+        glViewer.viewport(0,0,canvasViewer.width,canvasViewer.height);
+        glViewer.clearColor(0.333,0.333,0.333,1);
+        glViewer.clear(glViewer.COLOR_BUFFER_BIT|glViewer.DEPTH_BUFFER_BIT);
+        const view=mat4LookAt(eye,[0,0,0],[0,1,0]);
+        let ld=sunMode?[Math.cos(sunAngle)*2.2,1.2+Math.sin(sunAngle*0.5)*0.6,Math.sin(sunAngle)*2.2]:[1.0,1.0,1.5];
+        const ll=Math.sqrt(ld[0]*ld[0]+ld[1]*ld[1]+ld[2]*ld[2])||1;
+        renderViewer(time,view,new Float32Array([ld[0]/ll,ld[1]/ll,ld[2]/ll]));
+    } else {
+        // Editor context — same gray base, distinct context
+        glEditor.viewport(0,0,canvasEditor.width,canvasEditor.height);
+        glEditor.clearColor(0.333,0.333,0.333,1);
+        glEditor.clear(glEditor.COLOR_BUFFER_BIT|glEditor.DEPTH_BUFFER_BIT);
+    }
+    requestAnimationFrame(loop);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+loadShaderState();
+renderShaderList();rebuildLabels();updateDebug();
+drawOrbitBall();
+glViewer.enable(glViewer.DEPTH_TEST);glViewer.disable(glViewer.CULL_FACE);
+requestAnimationFrame(loop);
+window.addEventListener('resize',()=>{resizeCanvas();});
+</script>
+</body>
+</html>
