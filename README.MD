@@ -2,7 +2,7 @@ woah, mruaw.\
 \
 MI EXPERIMEEEENTIEZ!!1!\
 ah.. oh oh,,\
-LObyta\
+LObyta
 
 ### eeem [SHADER(Stop yelling!)Vieeewer_DRT(DotRubyTool.. i think?).EICHTIEMEL](https://github.com/stomarver/proving-ground/blob/webgl/ShaderViewer_DRT.HTML) -
 open in... browser? just em, try it :|\
